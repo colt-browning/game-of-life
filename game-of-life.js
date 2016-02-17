@@ -663,7 +663,7 @@ var GOLloadState, GOLrandom;
          * Button Handler - load state from text format
          */
         load : function() {
-          var text, i, j, hsize = 0, vsize, header, bhmsg, ph, block, n, tlx, tly, state;
+          var text, i, j, hsize = 0, vsize, header, bhmsg, ph, block, n, tlx, tly, state, lifeh = false;
 
           text = document.getElementById('textArea').value.split('\n');
           if (text.length === 0) {
@@ -732,9 +732,22 @@ var GOLloadState, GOLrandom;
               GOL.helpers.error(bhmsg);
               return;
             }
+            if (header.length >= 3) {
+              ph = header[2].split('=');
+              if (ph.length !== 2 || ph[0].trim() !== 'rule') {
+                GOL.helpers.error(bhmsg);
+              }
+              if (ph[1].trim() === 'LifeHistory' || ph[1].trim() === 'HistoricalLife') {
+                lifeh = true;
+              }
+            }
             text.shift();
 
-            text = text.join('').split('!', 1)[0].replace(/\s/g, '').replace(/[^$0-9b]/g, 'o') + '$';
+            text = text.join('').split('!', 1)[0].replace(/\s/g, '') + '$';
+            if (lifeh) {
+              text = text.replace(/[.BDF]/g, 'b');
+            }
+            text = text.replace(/[^$0-9b]/g, 'o');
 
             tlx = Math.floor((GOL.columns - hsize) / 2);
             tly = Math.floor((GOL.rows - vsize) / 2);
