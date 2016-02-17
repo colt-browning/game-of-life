@@ -26,7 +26,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 /**
  * Game of Life
  * by Pedro Verruma, pmav.eu, 04/Sep/2010
- * Russian translation and further development by Andrey Zabolotskiy, 2012-2014
+ * Russian translation and further development by Andrey Zabolotskiy, 2012-2016
  */
 
 // Enable global access to functions that load a state
@@ -160,10 +160,53 @@ var GOLloadState, GOLrandom;
     },
 
 
+    // Texts for messages and buttons
+    str : null,
+    
+    language : {
+      ru : {
+        error    : 'Ошибка: ',
+        warning  : 'Предупреждение: ',
+        stop     : ' Стоп ',
+        run      : ' Пуск ',
+        trailoff : 'След выключен',
+        trailon  : 'След включён',
+        colors   : 'Цветовая схема №',
+        grids    : 'Способ отображения сетки №',
+        unknown  : 'неизвестные символы в строке: ',
+        badhead  : 'плохой заголовок RLE: ',
+        atline   : 'на строке ',
+        ncols    : ' число столбцов в коде RLE ',
+        toomany  : ' больше указанного в строке формата ',
+        nlines   : 'число строк в коде RLE ',
+        notmatch : ' не совпадает с указанным в строке формата '
+      },
+      
+      en : {
+        error    : 'Error: ',
+        warning  : 'Warning: ',
+        stop     : ' Stop ',
+        run      : ' Run ',
+        trailoff : 'Trail is Off',
+        trailon  : 'Trail is On',
+        colors   : 'Color Scheme #',
+        grids    : 'Grid Scheme #',
+        unknown  : 'unknown symbols in the line: ',
+        badhead  : 'bad RLE header: ',
+        atline   : 'at line ',
+        ncols    : ' the number of columns in the RLE code ',
+        toomany  : ' exceeds the y-number from the format string ',
+        nlines   : 'the number of lines in the RLE code ',
+        notmatch : ' does not match the x-number from the format string '
+      }
+    },
+
+
     /**
       * On Load Event
       */
     init : function() {
+      this.str = this.language.ru; // Set language of messages and buttons
       try {
         this.listLife.init();   // Reset/init algorithm
         this.loadConfig();      // Load config from URL (autoplay, colors, zoom, ...)
@@ -174,7 +217,7 @@ var GOLloadState, GOLrandom;
     
         this.prepare();
       } catch (e) {
-        this.helpers.error("Error: "+e);
+        this.helpers.error(this.str.error+e);
       }
     },
 
@@ -410,7 +453,7 @@ var GOLloadState, GOLrandom;
       r = 1.0/this.generation;
       this.times.algorithm = (this.times.algorithm * (1 - r)) + (algorithmTime * r);
       this.times.gui = (this.times.gui * (1 - r)) + (guiTime * r);
-      this.element.steptime.innerHTML = algorithmTime + ' / '+guiTime+' ('+Math.round(this.times.algorithm) + ' / '+Math.round(this.times.gui)+')';
+      this.element.steptime.innerHTML = algorithmTime + ' / ' + guiTime + ' (' + Math.round(this.times.algorithm) + ' / ' + Math.round(this.times.gui) + ')';
 
       // Flow Control
       if (this.running) {
@@ -426,7 +469,7 @@ var GOLloadState, GOLrandom;
 
 
     /** ****************************************************************************************************************************
-     * Event Handerls
+     * Event Handlers
      */
     handlers : {
 
@@ -504,13 +547,13 @@ var GOLloadState, GOLrandom;
           GOL.running = !GOL.running;
           if (GOL.running) {
             GOL.nextStep();
-            document.getElementById('buttonRun').value = ' Стоп ';
+            document.getElementById('buttonRun').value = GOL.str.stop;
             document.getElementById('torus').disabled = true;
             document.getElementById('buttonLoad').disabled = true;
             document.getElementById('buttonSavePlaintext').disabled = true;
             document.getElementById('buttonSaveRLE').disabled = true;
           } else {
-            document.getElementById('buttonRun').value = ' Пуск ';
+            document.getElementById('buttonRun').value = GOL.str.run;
             document.getElementById('torus').disabled = false;
             document.getElementById('buttonLoad').disabled = false;
             document.getElementById('buttonSavePlaintext').disabled = false;
@@ -536,7 +579,7 @@ var GOLloadState, GOLrandom;
           if (GOL.running) {
             GOL.clear.schedule = true;
             GOL.running = false;
-            document.getElementById('buttonRun').value = ' Пуск ';
+            document.getElementById('buttonRun').value = GOL.str.run;
           } else {
             GOL.cleanUp();
           }
@@ -547,7 +590,7 @@ var GOLloadState, GOLrandom;
          * Button Handler - Remove/Add Trail
          */
         trail : function() {
-          GOL.element.messages.layout.innerHTML = GOL.trail.current ? 'След выключен' : 'След включён';
+          GOL.element.messages.layout.innerHTML = GOL.trail.current ? GOL.str.trailoff : GOL.str.trailon;
           GOL.trail.current = !GOL.trail.current;
           if (GOL.running) {
             GOL.trail.schedule = true;
@@ -562,7 +605,7 @@ var GOLloadState, GOLrandom;
          */
         colors : function() {
           GOL.colors.current = (GOL.colors.current + 1) % GOL.colors.schemes.length;
-          GOL.element.messages.layout.innerHTML = 'Цветовая схема №' + (GOL.colors.current + 1);
+          GOL.element.messages.layout.innerHTML = GOL.str.colors + (GOL.colors.current + 1);
           if (GOL.running) {
             GOL.colors.schedule = true; // Delay redraw
           } else {
@@ -576,7 +619,7 @@ var GOLloadState, GOLrandom;
          */
         grid : function() {
           GOL.grid.current = (GOL.grid.current + 1) % GOL.grid.schemes.length;
-          GOL.element.messages.layout.innerHTML = 'Способ отображения сетки №' + (GOL.grid.current + 1);
+          GOL.element.messages.layout.innerHTML = GOL.str.grids + (GOL.grid.current + 1);
           if (GOL.running) {
             GOL.grid.schedule = true; // Delay redraw
           } else {
@@ -620,8 +663,7 @@ var GOLloadState, GOLrandom;
          * Button Handler - load state from text format
          */
         load : function() {
-          var text, i, j, k, hsize = 0, vsize, header, bhmsg, ph, row,
-          nd, dpos, opos, bpos, block, n, bstack, ostack, bsmsg, tlx, tly, state;
+          var text, i, j, hsize = 0, vsize, header, bhmsg, ph, block, n, tlx, tly, state;
 
           text = document.getElementById('textArea').value.split('\n');
           if (text.length === 0) {
@@ -637,7 +679,7 @@ var GOLloadState, GOLrandom;
             for (i = 0; i < vsize; i++) {
               text[i] = text[i].trim().toUpperCase();
               if (!text[i].match(/^[.O]*$/)) {
-                GOL.helpers.error('Ошибка - неизвестные символы в строке: ' + text[i]);
+                GOL.helpers.error(GOL.str.error + GOL.str.unknown + text[i]);
                 return;
               }
               if (text[i].length > hsize) {
@@ -665,7 +707,7 @@ var GOLloadState, GOLrandom;
             }
 
             header = text[0].split(',');
-            bhmsg = 'Ошибка - плохой заголовок RLE: ' + text[0];
+            bhmsg = GOL.str.error + GOL.str.badhead + text[0];
             if (header.length < 2) {
               GOL.helpers.error(bhmsg);
               return;
@@ -709,7 +751,7 @@ var GOLloadState, GOLrandom;
               }
               if (block === '$') {
                 if (i > hsize) {
-                  GOL.helpers.warning('Предупреждение: на строке ' + (j+1) + ' число столбцов в коде RLE (' + i + ') больше указанного в строке формата (' + hsize + ')');
+                  GOL.helpers.warning(GOL.str.warning + GOL.str.atline + (j+1) + GOL.str.ncols + '(' + i + ')' + GOL.str.toomany + '(' + hsize + ')');
                 }
                 j += n;
                 i = 0;
@@ -724,7 +766,7 @@ var GOLloadState, GOLrandom;
               }
             }
             if (j !== vsize) {
-              GOL.helpers.warning('Предупреждение: число строк в коде RLE (' + j + ') не совпадает с указанным в строке формата (' + vsize + ')');
+              GOL.helpers.warning(GOL.str.warning + GOL.str.nlines + '(' + j + ')' + GOL.str.notmatch + '(' + vsize + ')');
             }
           }
 
@@ -847,7 +889,7 @@ var GOLloadState, GOLrandom;
           text += '!';
 
           header = 'x = ' + (maxx - minx + 1) + ', y = ' + (state[state.length - 1][0] - state[0][0] + 1);
-          header += ', rule = B3/S23'
+          header += ', rule = B3/S23';
 
           document.getElementById('textArea').value = header + '\n' + text;
         }
@@ -971,7 +1013,7 @@ var GOLloadState, GOLrandom;
 
           if (this.age[i][j] > -1) {
             this.context.fillStyle = GOL.colors.schemes[GOL.colors.current].alive[this.age[i][j] % GOL.colors.schemes[GOL.colors.current].alive.length];
-		  }
+          }
 
         } else {
           if (GOL.trail.current && this.age[i][j] < 0) {
@@ -1112,7 +1154,7 @@ var GOLloadState, GOLrandom;
             key = key.split(',');
             t1 = parseInt(key[0], 10);
             t2 = parseInt(key[1], 10);
-			
+
             this.addCell(t1, t2, newState);
             alive++;
             this.redrawList.push([t1, t2, 1]);
@@ -1301,7 +1343,7 @@ var GOLloadState, GOLrandom;
        *
        */
       withoutOuterCells : function() {
-	      var i, j, x, y, oldState = this.actualState, newState;
+        var i, j, x, y, oldState = this.actualState, newState;
         newState = [];
         for (i = 0; i < oldState.length; i++) {
           y = oldState[i][0];
@@ -1431,7 +1473,7 @@ var GOLloadState, GOLrandom;
        *
        */
       warning : function(s) {
-        alert(s);
+        this.error(s);
       },
 
 
@@ -1439,6 +1481,9 @@ var GOLloadState, GOLrandom;
        *
        */
       error : function(s) {
+        if (s.length > 500) {
+          s = s.slice(0, 480) + '...';
+        }
         alert(s);
       },
 
@@ -1481,9 +1526,9 @@ var GOLloadState, GOLrandom;
         }
 
         domObject = event.target || event.srcElement;
-		
+
         box = domObject.getBoundingClientRect();
-		
+
         top = box.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop)
         - (document.documentElement.clientTop || document.body.clientTop || 0);
         left= box.left+ (window.pageXOffset || document.documentElement.scrollLeft|| document.body.scrollLeft)
