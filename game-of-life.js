@@ -1,30 +1,20 @@
-/*jslint onevar: true, undef: false, nomen: true, eqeqeq: true, plusplus: false, bitwise: true, regexp: true, newcap: true, immed: true  */
-
 /**
  * Game of Life - JS & CSS
  * http://pmav.eu
  * 04/Sep/2010
+ * Russian translation and further development by Andrey Zabolotskiy, 2012-2014
  */
 
+// Enable global access to functions that load a state
+var GOLloadState, GOLrandom;
+
 (function () {
-
-  var stats = new Stats();
-  stats.setMode( 0 ); // 0 FPS, 1 MS
-
-  // align top-left
-  stats.domElement.style.position = 'absolute';
-  stats.domElement.style.right = '0px';
-  stats.domElement.style.bottom = '0px';
-  stats.domElement.style.zIndex = '999999';
-
-  document.addEventListener("DOMContentLoaded", function() {
-    document.body.appendChild( stats.domElement );
-  });
 
   var GOL = {
 
     columns : 0,
     rows : 0,
+    torus : false,
   
     waitTime: 0,
     generation : 0,
@@ -51,7 +41,6 @@
       generation : null,
       steptime : null,
       livecells : null,
-      hint : null,
       messages : {
         layout : null
       }
@@ -62,7 +51,7 @@
 
     // Trail state
     trail : {
-      current: true,
+      current: false,
       schedule : false
     },
 
@@ -99,7 +88,7 @@
       schemes : [
       // { columns : 100, rows : 48, cellSize : 8 },
       {
-        columns : 180,
+        columns : 150,
         rows : 86,
         cellSize : 4
       },
@@ -148,8 +137,8 @@
 
 
     /**
-         * On Load Event
-         */
+      * On Load Event
+      */
     init : function() {
       try {
         this.listLife.init();   // Reset/init algorithm
@@ -161,14 +150,14 @@
     
         this.prepare();
       } catch (e) {
-        alert("Error: "+e);
+        this.helpers.error("Error: "+e);
       }
     },
 
 
     /**
-         * Load config from URL
-         */
+     * Load config from URL
+     */
     loadConfig : function() {
       var colors, grid, zoom;
 
@@ -203,25 +192,35 @@
 
 
     /**
-         * Load world state from URL parameter
-         */
+     * Load world state from URL parameter
+     */
     loadState : function() {
-      var state, i, j, y, s = this.helpers.getUrlParameter('s');
+      var state, s = this.helpers.getUrlParameter('s');
 
-      if ( s === 'random') {
+      if (s === 'random') {
         this.randomState();
       } else {
-        if (s == undefined) {
+        if (s === undefined) {
           s = this.initialState;
         }
 
-        state = jsonParse(decodeURI(s));
+        state = JSON.parse(decodeURI(s));
           
-        for (i = 0; i < state.length; i++) {
-          for (y in state[i]) {
-            for (j = 0 ; j < state[i][y].length ; j++) {
-              this.listLife.addCell(state[i][y][j], parseInt(y, 10), this.listLife.actualState);
-            }
+        this.loadStateDirectly(state);
+      }
+    },
+
+
+    /**
+     * Load world state from a given object
+     */
+    loadStateDirectly : function(state) {
+      var i, j, y;
+
+      for (i = 0; i < state.length; i++) {
+        for (y in state[i]) {
+          for (j = 0; j < state[i][y].length; j++) {
+            this.listLife.addCell(state[i][y][j], parseInt(y, 10), this.listLife.actualState);
           }
         }
       }
@@ -237,8 +236,6 @@
       for (i = 0; i < liveCells; i++) {
         this.listLife.addCell(this.helpers.random(0, this.columns - 1), this.helpers.random(0, this.rows - 1), this.listLife.actualState);
       }
-
-      this.listLife.nextGeneration();
     },
 
 
@@ -259,7 +256,7 @@
       this.mouseDown = this.clear.schedule = false;
 
       this.element.generation.innerHTML = '0';
-      this.element.livecells.innerHTML = '0';
+      this.element.livecells.innerHTML = '.';
       this.element.steptime.innerHTML = '0 / 0 (0 / 0)';
 
       this.canvas.clearWorld(); // Reset GUI
@@ -281,8 +278,18 @@
       this.element.steptime = document.getElementById('steptime');
       this.element.livecells = document.getElementById('livecells');
       this.element.messages.layout = document.getElementById('layoutMessages');
-      this.element.hint = document.getElementById('hint');
     },
+    
+    
+    /**
+     *
+     */
+    mousePosition : function(e) {
+      var cellSize = this.zoom.schemes[this.zoom.current].cellSize + 1,
+      position = this.helpers.mousePosition(e);
+      return [Math.ceil(position[0]/cellSize - 1),
+              Math.ceil(position[1]/cellSize - 1)];
+   },
 
 
     /**
@@ -292,18 +299,23 @@
     registerEvents : function() {
 
       // Keyboard Events
-      this.helpers.registerEvent(document.body, 'keyup', this.handlers.keyboard, false);
+      this.helpers.registerEvent(document.body, 'keyup', this.handlers.keyboard);
 
       // Controls
-      this.helpers.registerEvent(document.getElementById('buttonRun'), 'click', this.handlers.buttons.run, false);
-      this.helpers.registerEvent(document.getElementById('buttonStep'), 'click', this.handlers.buttons.step, false);
-      this.helpers.registerEvent(document.getElementById('buttonClear'), 'click', this.handlers.buttons.clear, false);
-      this.helpers.registerEvent(document.getElementById('buttonExport'), 'click', this.handlers.buttons.export_, false);
+      this.helpers.registerEvent(document.getElementById('buttonRun'), 'click', this.handlers.buttons.run);
+      this.helpers.registerEvent(document.getElementById('buttonStep'), 'click', this.handlers.buttons.step);
+      this.helpers.registerEvent(document.getElementById('buttonClear'), 'click', this.handlers.buttons.clear);
 
       // Layout
-      this.helpers.registerEvent(document.getElementById('buttonTrail'), 'click', this.handlers.buttons.trail, false);
-      this.helpers.registerEvent(document.getElementById('buttonGrid'), 'click', this.handlers.buttons.grid, false);
-      this.helpers.registerEvent(document.getElementById('buttonColors'), 'click', this.handlers.buttons.colors, false);
+      this.helpers.registerEvent(document.getElementById('buttonTrail'), 'click', this.handlers.buttons.trail);
+      this.helpers.registerEvent(document.getElementById('buttonGrid'), 'click', this.handlers.buttons.grid);
+      this.helpers.registerEvent(document.getElementById('buttonColors'), 'click', this.handlers.buttons.colors);
+
+      // Save / Load
+      this.helpers.registerEvent(document.getElementById('buttonLoad'), 'click', this.handlers.buttons.load);
+      this.helpers.registerEvent(document.getElementById('buttonSavePlaintext'), 'click', this.handlers.buttons.savePlaintext);
+      this.helpers.registerEvent(document.getElementById('buttonSaveRLE'), 'click', this.handlers.buttons.saveRLE);
+      this.helpers.registerEvent(document.getElementById('buttonExport'), 'click', this.handlers.buttons.export_);
     },
 
 
@@ -315,9 +327,14 @@
 
       // Algorithm run
     
+      if (!this.torus && document.getElementById('torus').checked) {
+          this.listLife.actualState = this.listLife.withoutOuterCells();
+      }
+      this.torus = document.getElementById('torus').checked;
+
       algorithmTime = (new Date());
 
-      liveCellNumber = GOL.listLife.nextGeneration();
+      liveCellNumber = this.listLife.nextGeneration();
 
       algorithmTime = (new Date()) - algorithmTime;
 
@@ -326,16 +343,16 @@
 
       guiTime = (new Date());
 
-      for (i = 0; i < GOL.listLife.redrawList.length; i++) {
-        x = GOL.listLife.redrawList[i][0];
-        y = GOL.listLife.redrawList[i][1];
+      for (i = 0; i < this.listLife.redrawList.length; i++) {
+        x = this.listLife.redrawList[i][0];
+        y = this.listLife.redrawList[i][1];
 
-        if (GOL.listLife.redrawList[i][2] === 1) {
-          GOL.canvas.changeCelltoAlive(x, y);
-        } else if (GOL.listLife.redrawList[i][2] === 2) {
-          GOL.canvas.keepCellAlive(x, y);
+        if (this.listLife.redrawList[i][2] === 1) {
+          this.canvas.changeCelltoAlive(x, y);
+        } else if (this.listLife.redrawList[i][2] === 2) {
+          this.canvas.keepCellAlive(x, y);
         } else {
-          GOL.canvas.changeCelltoDead(x, y);
+          this.canvas.changeCelltoDead(x, y);
         }
       }
 
@@ -344,54 +361,48 @@
       // Pos-run updates
 
       // Clear Trail
-      if (GOL.trail.schedule) {
-        GOL.trail.schedule = false;
-        GOL.canvas.drawWorld();
+      if (this.trail.schedule) {
+        this.trail.schedule = false;
+        this.canvas.drawWorld();
       }
 
       // Change Grid
-      if (GOL.grid.schedule) {
-        GOL.grid.schedule = false;
-        GOL.canvas.drawWorld();
+      if (this.grid.schedule) {
+        this.grid.schedule = false;
+        this.canvas.drawWorld();
       }
 
       // Change Colors
-      if (GOL.colors.schedule) {
-        GOL.colors.schedule = false;
-        GOL.canvas.drawWorld();
+      if (this.colors.schedule) {
+        this.colors.schedule = false;
+        this.canvas.drawWorld();
       }
 
       // Running Information
-      GOL.generation++;
-      GOL.element.generation.innerHTML = GOL.generation;
-      GOL.element.livecells.innerHTML = liveCellNumber;
+      this.generation++;
+      this.element.generation.innerHTML = this.generation;
+      this.element.livecells.innerHTML = liveCellNumber;
 
-      r = 1.0/GOL.generation;
-      GOL.times.algorithm = (GOL.times.algorithm * (1 - r)) + (algorithmTime * r);
-      GOL.times.gui = (GOL.times.gui * (1 - r)) + (guiTime * r);
-      GOL.element.steptime.innerHTML = algorithmTime + ' / '+guiTime+' ('+Math.round(GOL.times.algorithm) + ' / '+Math.round(GOL.times.gui)+')';
+      r = 1.0/this.generation;
+      this.times.algorithm = (this.times.algorithm * (1 - r)) + (algorithmTime * r);
+      this.times.gui = (this.times.gui * (1 - r)) + (guiTime * r);
+      this.element.steptime.innerHTML = algorithmTime + ' / '+guiTime+' ('+Math.round(this.times.algorithm) + ' / '+Math.round(this.times.gui)+')';
 
       // Flow Control
-      if (GOL.running) {
-        stats.begin();
-        window.requestAnimationFrame(GOL.nextStep);
-        stats.end();
-        // TODO honour a waitTime ?
-        //setTimeout(function() {
-        //  stats.begin();
-        //  GOL.nextStep();
-        //  stats.end();
-        //}, GOL.waitTime);
+      if (this.running) {
+        setTimeout(function() {
+          GOL.nextStep();
+        }, this.waitTime);
       } else {
-        if (GOL.clear.schedule) {
-          GOL.cleanUp();
+        if (this.clear.schedule) {
+          this.cleanUp();
         }
       }
     },
 
 
     /** ****************************************************************************************************************************
-     * Event Handlers
+     * Event Handerls
      */
     handlers : {
 
@@ -404,7 +415,7 @@
        *
        */
       canvasMouseDown : function(event) {
-        var position = GOL.helpers.mousePosition(event);
+        var position = GOL.mousePosition(event);
         GOL.canvas.switchCell(position[0], position[1]);
         GOL.handlers.lastX = position[0];
         GOL.handlers.lastY = position[1];
@@ -425,7 +436,7 @@
        */
       canvasMouseMove : function(event) {
         if (GOL.handlers.mouseDown) {
-          var position = GOL.helpers.mousePosition(event);
+          var position = GOL.mousePosition(event);
           if ((position[0] !== GOL.handlers.lastX) || (position[1] !== GOL.handlers.lastY)) {
             GOL.canvas.switchCell(position[0], position[1]);
             GOL.handlers.lastX = position[0];
@@ -444,12 +455,18 @@
           event = window.event;
         }
       
-        if (event.keyCode === 67) { // Key: C
-          GOL.handlers.buttons.clear();
-        } else if (event.keyCode === 82 ) { // Key: R
-          GOL.handlers.buttons.run();
-        } else if (event.keyCode === 83 ) { // Key: S
-          GOL.handlers.buttons.step();
+        if (!event.ctrlKey) {
+          if (event.keyCode === 67) { // Key: C
+            GOL.handlers.buttons.clear();
+          } else if (event.keyCode === 82 ) { // Key: R
+            GOL.handlers.buttons.run();
+          } else if (event.keyCode === 83 ) { // Key: S
+            GOL.handlers.buttons.step();
+          }
+        }
+        
+        if (event.ctrlKey && event.keyCode === 13) { // Ctrl + Enter
+          GOL.handlers.buttons.load();
         }
       },
 
@@ -460,14 +477,20 @@
          * Button Handler - Run
          */
         run : function() {
-          GOL.element.hint.style.display = 'none';
-
           GOL.running = !GOL.running;
           if (GOL.running) {
             GOL.nextStep();
-            document.getElementById('buttonRun').value = 'Stop';
+            document.getElementById('buttonRun').value = ' Стоп ';
+            document.getElementById('torus').disabled = true;
+            document.getElementById('buttonLoad').disabled = true;
+            document.getElementById('buttonSavePlaintext').disabled = true;
+            document.getElementById('buttonSaveRLE').disabled = true;
           } else {
-            document.getElementById('buttonRun').value = 'Run';
+            document.getElementById('buttonRun').value = ' Пуск ';
+            document.getElementById('torus').disabled = false;
+            document.getElementById('buttonLoad').disabled = false;
+            document.getElementById('buttonSavePlaintext').disabled = false;
+            document.getElementById('buttonSaveRLE').disabled = false;
           }
         },
 
@@ -489,7 +512,7 @@
           if (GOL.running) {
             GOL.clear.schedule = true;
             GOL.running = false;
-            document.getElementById('buttonRun').value = 'Run';
+            document.getElementById('buttonRun').value = ' Пуск ';
           } else {
             GOL.cleanUp();
           }
@@ -500,7 +523,7 @@
          * Button Handler - Remove/Add Trail
          */
         trail : function() {
-          GOL.element.messages.layout.innerHTML = GOL.trail.current ? 'Trail is Off' : 'Trail is On';
+          GOL.element.messages.layout.innerHTML = GOL.trail.current ? 'След выключен' : 'След включён';
           GOL.trail.current = !GOL.trail.current;
           if (GOL.running) {
             GOL.trail.schedule = true;
@@ -515,7 +538,7 @@
          */
         colors : function() {
           GOL.colors.current = (GOL.colors.current + 1) % GOL.colors.schemes.length;
-          GOL.element.messages.layout.innerHTML = 'Color Scheme #' + (GOL.colors.current + 1);
+          GOL.element.messages.layout.innerHTML = 'Цветовая схема №' + (GOL.colors.current + 1);
           if (GOL.running) {
             GOL.colors.schedule = true; // Delay redraw
           } else {
@@ -529,7 +552,7 @@
          */
         grid : function() {
           GOL.grid.current = (GOL.grid.current + 1) % GOL.grid.schemes.length;
-          GOL.element.messages.layout.innerHTML = 'Grid Scheme #' + (GOL.grid.current + 1);
+          GOL.element.messages.layout.innerHTML = 'Способ отображения сетки №' + (GOL.grid.current + 1);
           if (GOL.running) {
             GOL.grid.schedule = true; // Delay redraw
           } else {
@@ -539,21 +562,20 @@
 
 
         /**
-         * Button Handler - Export State
+         * Button Handler - export state as a link
          */
         export_ : function() {
           var i, j, url = '', cellState = '', params = '';
 
           for (i = 0; i < GOL.listLife.actualState.length; i++) {
             cellState += '{"'+GOL.listLife.actualState[i][0]+'":[';
-            //cellState += '{"one":[';
             for (j = 1; j < GOL.listLife.actualState[i].length; j++) {
               cellState += GOL.listLife.actualState[i][j]+',';
             }
             cellState = cellState.substring(0, cellState.length - 1) + ']},';
           }
 
-          cellState = cellState.substring(0, cellState.length - 1) + '';
+          cellState = cellState.substring(0, cellState.length - 1);
 
           if (cellState.length !== 0) {
             url = (window.location.href.indexOf('?') === -1) ? window.location.href : window.location.href.slice(0, window.location.href.indexOf('?'));
@@ -566,9 +588,244 @@
             '&s=['+ cellState +']';
 
             document.getElementById('exportUrlLink').href = params;
-            document.getElementById('exportTinyUrlLink').href = 'http://tinyurl.com/api-create.php?url='+ url + params;
             document.getElementById('exportUrl').style.display = 'inline';
           }
+        },
+
+        /**
+         * Button Handler - load state from text format
+         */
+        load : function() {
+          var text, i, j, k, hsize = 0, vsize, header, bhmsg, ph, row,
+          nd, dpos, opos, bpos, block, n, bstack, ostack, bsmsg, tlx, tly, state;
+
+          text = document.getElementById('textArea').value.split('\n');
+          if (text.length === 0) {
+            return;
+          }
+          state = [];
+
+          if (text[0].trim().match(/^[!.O]./)) { // plaintext according to http://www.conwaylife.com/wiki/Plaintext
+            while (text.length > 0 && text[0].length > 0 && text[0].trim()[0] === '!') {
+              text.shift();
+            }
+            vsize = text.length;
+            for (i = 0; i < vsize; i++) {
+              text[i] = text[i].trim().toUpperCase();
+              if (!text[i].match(/^[.O]*$/)) {
+                GOL.helpers.error('Ошибка - неизвестные символы в строке: ' + text[i]);
+                return;
+              }
+              if (text[i].length > hsize) {
+                hsize = text[i].length;
+              }
+            }
+
+            tlx = Math.floor((GOL.columns - hsize) / 2);
+            tly = Math.floor((GOL.rows - vsize) / 2);
+            for (j = 0; j < vsize; j++) {
+              for (i = 0; i < text[j].length; i++) {
+                if (text[j][i] === 'O') {
+                  GOL.listLife.addCell(tlx + i, tly + j, state);
+                }
+              }
+            }
+
+          } else { // RLE almost according to http://www.conwaylife.com/wiki/RLE (ignoring instructions about rules and so on)
+
+            while (text.length > 0 && text[0].length > 0 && text[0].trim()[0] === '#') {
+              text.shift();
+            }
+            if (text.length === 0) {
+              return;
+            }
+
+            header = text[0].split(',');
+            bhmsg = 'Ошибка - плохой заголовок RLE: ' + text[0];
+            if (header.length < 2) {
+              GOL.helpers.error(bhmsg);
+              return;
+            }
+            ph = header[0].split('=');
+            if (ph.length !== 2 || ph[0].trim() !== 'x') {
+              GOL.helpers.error(bhmsg);
+              return;
+            }
+            hsize = parseInt(ph[1]);
+            if (isNaN(hsize)) {
+              GOL.helpers.error(bhmsg);
+              return;
+            }
+            ph = header[1].split('=');
+            if (ph.length !== 2 || ph[0].trim() !== 'y') {
+              GOL.helpers.error(bhmsg);
+              return;
+            }
+            vsize = parseInt(ph[1]);
+            if (isNaN(vsize)) {
+              GOL.helpers.error(bhmsg);
+              return;
+            }
+            text.shift();
+
+            text = text.join('').split('!', 1)[0].replace(/\s/g, '').replace(/[^$0-9b]/g, 'o') + '$';
+
+            tlx = Math.floor((GOL.columns - hsize) / 2);
+            tly = Math.floor((GOL.rows - vsize) / 2);
+            j = 0;
+            i = 0;
+            while (text !== '') {
+              block = text.match(/^\d*[ob$]/)[0];
+              text = text.slice(block.length);
+              if (block.length === 1) {
+                n = 1;
+              } else {
+                n = parseInt(block.slice(0, -1));
+                block = block.slice(-1);
+              }
+              if (block === '$') {
+                if (i > hsize) {
+                  GOL.helpers.warning('Предупреждение: на строке ' + (j+1) + ' число столбцов в коде RLE (' + i + ') больше указанного в строке формата (' + hsize + ')');
+                }
+                j += n;
+                i = 0;
+              } else if (block === 'b') {
+                i += n;
+              } else if (block === 'o') {
+                while (n > 0) {
+                  GOL.listLife.addCell(tlx + i, tly + j, state);
+                  i++;
+                  n--;
+                }
+              }
+            }
+            if (j !== vsize) {
+              GOL.helpers.warning('Предупреждение: число строк в коде RLE (' + j + ') не совпадает с указанным в строке формата (' + vsize + ')');
+            }
+          }
+
+          GOL.cleanUp();
+          GOL.listLife.actualState = state;
+          GOL.canvas.drawWorld();
+        },
+
+        /**
+         * Button Handler - save state in plaintext format (visible part only)
+         */
+        savePlaintext : function() {
+          var state, minx, i, j, x, text;
+
+          state = GOL.listLife.withoutOuterCells();
+
+          if (state.length === 0) {
+            return;
+          }
+
+          minx = state[0][1];
+          for (j = 1; j < state.length; j++) {
+            if (state[j][1] < minx) {
+              minx = state[j][1];
+            }
+          }
+
+          text = '';
+          for (j = 0; j < state.length; j++) {
+            if (j > 0) {
+              text += new Array(state[j][0] - state[j-1][0] + 1).join('\n');
+            }
+            x = minx - 1;
+            for (i = 1; i < state[j].length; i++) {
+              text += (new Array(state[j][i] - x).join('.')) + 'O';
+              x = state[j][i];
+            }
+          }
+
+          document.getElementById('textArea').value = text;
+        },
+
+        /**
+         * Button Handler - save state in RLE format
+         */
+        saveRLE : function() {
+          var state, minx, maxx, i, j, x, header, text, block, no, lim = 69;
+
+          state = GOL.listLife.actualState;
+
+          if (state.length === 0) {
+            return;
+          }
+
+          minx = state[0][1];
+          maxx = state[0][state[0].length - 1];
+          for (j = 1; j < state.length; j++) {
+            if (state[j][1] < minx) {
+              minx = state[j][1];
+            }
+            if (state[j][state[j].length - 1] > maxx) {
+              maxx = state[j][state[j].length - 1];
+            }
+          }
+
+          text = '';
+          for (j = 0; j < state.length; j++) {
+            if (j > 0) {
+              no = state[j][0] - state[j - 1][0];
+              block = '';
+              if (no !== 1) {
+                block += no;
+              }
+              block += '$';
+              if (text.length + block.length - text.lastIndexOf('\n') > lim) {
+                text += '\n';
+              }
+              text += block;
+            }
+            x = minx - 1;
+            no = 0;
+            for (i = 1; i < state[j].length; i++) {
+              if (state[j][i] - x > 1) {
+                if (no > 0) {
+                  block = '';
+                  if (no !== 1) {
+                    block += no;
+                  }
+                  block += 'o';
+                  if (text.length + block.length - text.lastIndexOf('\n') > lim) {
+                    text += '\n';
+                  }
+                  text += block;
+                }
+                block = '';
+                if (state[j][i] - x - 1 !== 1) {
+                  block = block + (state[j][i] - x - 1);
+                }
+                block += 'b';
+                if (text.length + block.length - text.lastIndexOf('\n') > lim) {
+                  text += '\n';
+                }
+                text += block;
+                no = 1;
+              } else {
+                no += 1;
+              }
+              x = state[j][i];
+            }
+            block = '';
+            if (no !== 1) {
+              block += no;
+            }
+            block += 'o';
+            if (text.length + block.length - text.lastIndexOf('\n') > lim) {
+              text += '\n';
+            }
+            text += block;
+          }
+          text += '!';
+
+          header = 'x = ' + (maxx - minx + 1) + ', y = ' + (state[state.length - 1][0] - state[0][0] + 1);
+          header += ', rule = B3/S23'
+
+          document.getElementById('textArea').value = header + '\n' + text;
         }
 
       }
@@ -579,7 +836,7 @@
     /** ****************************************************************************************************************************
      *
      */
-    canvas: {
+    canvas : {
 
       context : null,
       width : null,
@@ -651,8 +908,8 @@
         this.context.fillStyle = GOL.grid.schemes[GOL.grid.current].color;
         this.context.fillRect(0, 0, this.width, this.height);
 
-        for (i = 0 ; i < GOL.columns; i++) {
-          for (j = 0 ; j < GOL.rows; j++) {
+        for (i = 0; i < GOL.columns; i++) {
+          for (j = 0; j < GOL.rows; j++) {
             if (GOL.listLife.isAlive(i, j)) {
               this.drawCell(i, j, true);
             } else {
@@ -688,8 +945,9 @@
                 
         if (alive) {
 
-          if (this.age[i][j] > -1)
+          if (this.age[i][j] > -1) {
             this.context.fillStyle = GOL.colors.schemes[GOL.colors.current].alive[this.age[i][j] % GOL.colors.schemes[GOL.colors.current].alive.length];
+		  }
 
         } else {
           if (GOL.trail.current && this.age[i][j] < 0) {
@@ -708,10 +966,10 @@
        * switchCell
        */
       switchCell : function(i, j) {
-        if(GOL.listLife.isAlive(i, j)) {
+        if (GOL.listLife.isAlive(i, j)) {
           this.changeCelltoDead(i, j);
           GOL.listLife.removeCell(i, j, GOL.listLife.actualState);
-        }else {
+        } else {
           this.changeCelltoAlive(i, j);
           GOL.listLife.addCell(i, j, GOL.listLife.actualState);
         }
@@ -770,37 +1028,10 @@
       },
 
 
-      /**
-       *
-	NOTE: The following code is slower than the used one.
-	
-	(...)
-	
-	if (allDeadNeighbours[key] === undefined) {
-	  allDeadNeighbours[key] = {
-			x: deadNeighbours[m][0],
-			y: deadNeighbours[m][1],
-			i: 1
-		};
-	} else {
-	  allDeadNeighbours[key].i++;
-	}
-	
-	(...)
-			
-	// Process dead neighbours
-	for (key in allDeadNeighbours) {
-	  
-	  if (allDeadNeighbours[key].i === 3) { // Add new Cell
-		
-		this.addCell(allDeadNeighbours[key].x, allDeadNeighbours[key].y, newState);
-		alive++;
-		this.redrawList.push([allDeadNeighbours[key].x, allDeadNeighbours[key].y, 1]);
-	  }
-	}
-	*/
       nextGeneration : function() {
-        var x, y, i, j, m, n, key, t1, t2, alive = 0, neighbours, deadNeighbours, allDeadNeighbours = {}, newState = [];
+        var x, y, xp1, xm1, yp1, ym1,
+        i, j, m, key, t1, t2, alive = 0,
+        neighbours, deadNeighbours, allDeadNeighbours = {}, newState = [];
         this.redrawList = [];
 
         for (i = 0; i < this.actualState.length; i++) {
@@ -810,9 +1041,20 @@
           for (j = 1; j < this.actualState[i].length; j++) {
             x = this.actualState[i][j];
             y = this.actualState[i][0];
+            xp1 = x + 1;
+            xm1 = x - 1;
+            yp1 = y + 1;
+            ym1 = y - 1;
+            if (GOL.torus)
+            {
+              xp1 = (xp1 + GOL.columns) % GOL.columns;
+              xm1 = (xm1 + GOL.columns) % GOL.columns;
+              yp1 = (yp1 + GOL.rows) % GOL.rows;
+              ym1 = (ym1 + GOL.rows) % GOL.rows;
+            }
 
             // Possible dead neighbours
-            deadNeighbours = [[x-1, y-1, 1], [x, y-1, 1], [x+1, y-1, 1], [x-1, y, 1], [x+1, y, 1], [x-1, y+1, 1], [x, y+1, 1], [x+1, y+1, 1]];
+            deadNeighbours = [[xm1, ym1, 1], [x, ym1, 1], [xp1, ym1, 1], [xm1, y, 1], [xp1, y, 1], [xm1, yp1, 1], [x, yp1, 1], [xp1, yp1, 1]];
 
             // Get number of live neighbours and remove alive neighbours from deadNeighbours
             neighbours = this.getNeighboursFromAlive(x, y, i, deadNeighbours);
@@ -863,109 +1105,128 @@
       middlePointer : 1,
       bottomPointer : 1,
 
-      /**
-             *
-             */
       getNeighboursFromAlive : function (x, y, i, possibleNeighboursList) {
-        var neighbours = 0, k;
-
+        var neighbours = 0, k, xp1, yp1, xm1, ym1, pn;
+        if (GOL.torus) {
+          for (pn = 0; pn < 8; pn++) {
+            if (this.isAlive(possibleNeighboursList[pn][0], possibleNeighboursList[pn][1])) {
+              possibleNeighboursList[pn] = undefined;
+              neighbours++;
+            }
+          }
+        } else {
         // Top
-        if (this.actualState[i-1] !== undefined) {
-          if (this.actualState[i-1][0] === (y - 1)) {
-            for (k = this.topPointer; k < this.actualState[i-1].length; k++) {
+          if (this.actualState[i-1] !== undefined) {
+            if (this.actualState[i-1][0] === (y - 1)) {
+              for (k = this.topPointer; k < this.actualState[i-1].length; k++) {
 
-              if (this.actualState[i-1][k] >= (x-1) ) {
 
-                if (this.actualState[i-1][k] === (x - 1)) {
-                  possibleNeighboursList[0] = undefined;
-                  this.topPointer = k + 1;
-                  neighbours++;
-                }
+                if (this.actualState[i-1][k] >= (x-1) ) {
 
-                if (this.actualState[i-1][k] === x) {
-                  possibleNeighboursList[1] = undefined;
-                  this.topPointer = k;
-                  neighbours++;
-                }
 
-                if (this.actualState[i-1][k] === (x + 1)) {
-                  possibleNeighboursList[2] = undefined;
-
-                  if (k == 1) {
-                    this.topPointer = 1;
-                  } else {
-                    this.topPointer = k - 1;
+                  if (this.actualState[i-1][k] === (x - 1)) {
+                    possibleNeighboursList[0] = undefined;
+                    this.topPointer = k + 1;
+                    neighbours++;
                   }
-                                    
-                  neighbours++;
-                }
 
-                if (this.actualState[i-1][k] > (x + 1)) {
-                  break;
+
+                  if (this.actualState[i-1][k] === x) {
+                    possibleNeighboursList[1] = undefined;
+                    this.topPointer = k;
+                    neighbours++;
+                  }
+
+
+                  if (this.actualState[i-1][k] === (x + 1)) {
+                    possibleNeighboursList[2] = undefined;
+
+
+                    if (k === 1) {
+                      this.topPointer = 1;
+                    } else {
+                      this.topPointer = k - 1;
+                    }
+                                      
+                    neighbours++;
+                  }
+
+
+                  if (this.actualState[i-1][k] > (x + 1)) {
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          // Middle
+          for (k = 1; k < this.actualState[i].length; k++) {
+            if (this.actualState[i][k] >= (x - 1)) {
+
+
+              if (this.actualState[i][k] === (x - 1)) {
+                possibleNeighboursList[3] = undefined;
+                neighbours++;
+              }
+
+
+              if (this.actualState[i][k] === (x + 1)) {
+                possibleNeighboursList[4] = undefined;
+                neighbours++;
+              }
+
+
+              if (this.actualState[i][k] > (x + 1)) {
+                break;
+              }
+            }
+          }
+
+
+          // Bottom
+          if (this.actualState[i+1] !== undefined) {
+            if (this.actualState[i+1][0] === (y + 1)) {
+              for (k = this.bottomPointer; k < this.actualState[i+1].length; k++) {
+                if (this.actualState[i+1][k] >= (x - 1)) {
+
+
+                  if (this.actualState[i+1][k] === (x - 1)) {
+                    possibleNeighboursList[5] = undefined;
+                    this.bottomPointer = k + 1;
+                    neighbours++;
+                  }
+
+
+                  if (this.actualState[i+1][k] === x) {
+                    possibleNeighboursList[6] = undefined;
+                    this.bottomPointer = k;
+                    neighbours++;
+                  }
+
+
+                  if (this.actualState[i+1][k] === (x + 1)) {
+                    possibleNeighboursList[7] = undefined;
+                                      
+                    if (k === 1) {
+                      this.bottomPointer = 1;
+                    } else {
+                      this.bottomPointer = k - 1;
+                    }
+
+
+                    neighbours++;
+                  }
+
+
+                  if (this.actualState[i+1][k] > (x + 1)) {
+                    break;
+                  }
                 }
               }
             }
           }
         }
-        
-        // Middle
-        for (k = 1; k < this.actualState[i].length; k++) {
-          if (this.actualState[i][k] >= (x - 1)) {
-
-            if (this.actualState[i][k] === (x - 1)) {
-              possibleNeighboursList[3] = undefined;
-              neighbours++;
-            }
-
-            if (this.actualState[i][k] === (x + 1)) {
-              possibleNeighboursList[4] = undefined;
-              neighbours++;
-            }
-
-            if (this.actualState[i][k] > (x + 1)) {
-              break;
-            }
-          }
-        }
-
-        // Bottom
-        if (this.actualState[i+1] !== undefined) {
-          if (this.actualState[i+1][0] === (y + 1)) {
-            for (k = this.bottomPointer; k < this.actualState[i+1].length; k++) {
-              if (this.actualState[i+1][k] >= (x - 1)) {
-
-                if (this.actualState[i+1][k] === (x - 1)) {
-                  possibleNeighboursList[5] = undefined;
-                  this.bottomPointer = k + 1;
-                  neighbours++;
-                }
-
-                if (this.actualState[i+1][k] === x) {
-                  possibleNeighboursList[6] = undefined;
-                  this.bottomPointer = k;
-                  neighbours++;
-                }
-
-                if (this.actualState[i+1][k] === (x + 1)) {
-                  possibleNeighboursList[7] = undefined;
-                                    
-                  if (k == 1) {
-                    this.bottomPointer = 1;
-                  } else {
-                    this.bottomPointer = k - 1;
-                  }
-
-                  neighbours++;
-                }
-
-                if (this.actualState[i+1][k] > (x + 1)) {
-                  break;
-                }
-              }
-            }
-          }
-        }
-		
         return neighbours;
       },
 
@@ -1015,6 +1276,27 @@
       /**
        *
        */
+      withoutOuterCells : function() {
+	      var i, j, x, y, oldState = this.actualState, newState;
+        newState = [];
+        for (i = 0; i < oldState.length; i++) {
+          y = oldState[i][0];
+          if (y >= 0 && y < GOL.rows) {
+            for (j = 1; j < oldState[i].length; j++) {
+              x = oldState[i][j];
+              if (x >= 0 && x < GOL.columns) {
+                this.addCell(x, y, newState);
+              }
+            }
+          }
+        }
+        return newState;
+      },
+
+
+      /**
+       *
+       */
       addCell : function(x, y, state) {
         if (state.length === 0) {
           state.push([y, x]);
@@ -1033,11 +1315,8 @@
             state[k] = newState[k];
           }
 
-          return;
-
         } else if (y > state[state.length - 1][0]) { // Add to Tail
           state[state.length] = [y, x];
-          return;
 
         } else { // Add to Middle
 
@@ -1046,9 +1325,11 @@
               tempRow = [];
               added = false;
               for (m = 1; m < state[n].length; m++) {
-                if ((!added) && (x < state[n][m])) {
-                  tempRow.push(x);
-                  added = !added;
+                if ((!added) && (x <= state[n][m])) {
+                  if (x !== state[n][m]) {
+                    tempRow.push(x);
+                  }
+                  added = true;
                 }
                 tempRow.push(state[n][m]);
               }
@@ -1094,14 +1375,6 @@
 
 
       /**
-       * Return a random integer from [min, max]
-       */
-      random : function(min, max) {
-        return min <= max ? min + Math.round(Math.random() * (max - min)) : null;
-      },
-
-
-      /**
        * Get URL Parameters
        */
       getUrlParameter : function(name) {
@@ -1123,13 +1396,41 @@
 
 
       /**
+       * Return a random integer from [min, max]
+       */
+      random : function(min, max) {
+        return min <= max ? min + Math.round(Math.random() * (max - min)) : null;
+      },
+      
+      
+      /**
+       *
+       */
+      warning : function(s) {
+        alert(s);
+      },
+
+
+      /**
+       *
+       */
+      error : function(s) {
+        alert(s);
+      },
+
+
+      /**
        * Register Event
        */
       registerEvent : function (element, event, handler, capture) {
-        if (/msie/i.test(navigator.userAgent)) {
+        // simple cross-browser event adding
+        capture = (capture !== undefined ? capture : false);
+        if (element.addEventListener) {
+          element.addEventListener(event, handler, capture);
+        } else if (element.attachEvent) {
           element.attachEvent('on' + event, handler);
         } else {
-          element.addEventListener(event, handler, capture);
+          element['on' + event] = handler;
         }
       },
 
@@ -1138,38 +1439,33 @@
        *
        */
       mousePosition : function (e) {
-        // http://www.malleus.de/FAQ/getImgMousePos.html
+        // http://learn.javascript.ru/coordinates
         // http://www.quirksmode.org/js/events_properties.html#position
-        var event, x, y, domObject, posx = 0, posy = 0, top = 0, left = 0, cellSize = GOL.zoom.schemes[GOL.zoom.current].cellSize + 1;
+        var event, domObject, posx = 0, posy = 0, top, left, box;
 
         event = e;
         if (!event) {
           event = window.event;
         }
       
-        if (event.pageX || event.pageY) 	{
+        if (event.pageX || event.pageY) {
           posx = event.pageX;
           posy = event.pageY;
-        } else if (event.clientX || event.clientY) 	{
+        } else if (event.clientX || event.clientY) {
           posx = event.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
           posy = event.clientY + document.body.scrollTop + document.documentElement.scrollTop;
         }
 
         domObject = event.target || event.srcElement;
+		
+        box = domObject.getBoundingClientRect();
+		
+        top = box.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop)
+        - (document.documentElement.clientTop || document.body.clientTop || 0);
+        left= box.left+ (window.pageXOffset || document.documentElement.scrollLeft|| document.body.scrollLeft)
+        - (document.documentElement.clientLeft|| document.body.clientLeft|| 0);
 
-        while ( domObject.offsetParent ) {
-          left += domObject.offsetLeft;
-          top += domObject.offsetTop;
-          domObject = domObject.offsetParent;
-        }
-
-        domObject.pageTop = top;
-        domObject.pageLeft = left;
-
-        x = Math.ceil(((posx - domObject.pageLeft)/cellSize) - 1);
-        y = Math.ceil(((posy - domObject.pageTop)/cellSize) - 1);
-
-        return [x, y];
+        return [posx - left, posy - top];
       }
     }
 
@@ -1182,5 +1478,18 @@
   GOL.helpers.registerEvent(window, 'load', function () {
     GOL.init();
   }, false);
+
+
+  GOLloadState = function(s) {
+    GOL.cleanUp();
+    GOL.loadStateDirectly(s);
+    GOL.prepare();
+  };
+
+  GOLrandom = function() {
+    GOL.cleanUp();
+    GOL.randomState();
+    GOL.prepare();
+  };
 
 }());
