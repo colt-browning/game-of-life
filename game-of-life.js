@@ -72,6 +72,12 @@ var GOLloadState, GOLrandom;
 
     // Initial state
     initialState : '[{"39":[110]},{"40":[112]},{"41":[109,110,113,114,115]}]',
+    
+    // Rules of survival and birth
+    rule : {
+      s : null,
+      b : null
+    },
 
     // Trail state
     trail : {
@@ -220,34 +226,65 @@ var GOLloadState, GOLrandom;
         this.helpers.error(this.str.error+e);
       }
     },
+    
+    
+    /**
+      * Set rules of birth and survival from the two strings
+      */
+    setRule : function(ss, bs) {
+      var i, s = [], b = [];
+      for (i = 0; i <= 9; i++) {
+        if (ss.indexOf('' + i) > -1) {
+          s.push(i);
+        }
+        if (i > 0 && bs.indexOf('' + i) > -1) {
+          b.push(i);
+        }
+      }
+      this.rule.s = s;
+      this.rule.b = b;
+    },
 
 
     /**
      * Load config from URL
      */
     loadConfig : function() {
-      var colors, grid, zoom;
+      var colors, grid, zoom, rule;
 
       this.autoplay = this.helpers.getUrlParameter('autoplay') === '1' ? true : this.autoplay;
       this.trail.current = this.helpers.getUrlParameter('trail') === '1' ? true : this.trail.current;
 
       // Initial color config
       colors = parseInt(this.helpers.getUrlParameter('colors'), 10);
-      if (isNaN(colors) || colors < 1 || colors > GOL.colors.schemes.length) {
+      if (isNaN(colors) || colors < 1 || colors > this.colors.schemes.length) {
         colors = 1;
       }
 
       // Initial grid config
       grid = parseInt(this.helpers.getUrlParameter('grid'), 10);
-      if (isNaN(grid) || grid < 1 || grid > GOL.grid.schemes.length) {
+      if (isNaN(grid) || grid < 1 || grid > this.grid.schemes.length) {
         grid = 1;
       }
 
       // Initial zoom config
       zoom = parseInt(this.helpers.getUrlParameter('zoom'), 10);
-      if (isNaN(zoom) || zoom < 1 || zoom > GOL.zoom.schemes.length) {
+      if (isNaN(zoom) || zoom < 1 || zoom > this.zoom.schemes.length) {
         zoom = 1;
       }
+      
+      // Initial rule
+      rule = this.helpers.getUrlParameter('rule');
+      if (rule !== undefined) {
+        rule = rule.split(',', 2);
+        if (rule.length < 2) {
+          rule = ['23', '3']; // Conway's Life
+        }
+      } else {
+        rule = ['23', '3'];
+      }
+      
+      this.setRule(rule[0], rule[1]);
 
       this.colors.current = colors - 1;
       this.grid.current = grid - 1;
@@ -652,6 +689,7 @@ var GOLloadState, GOLrandom;
             '&grid=' + (GOL.grid.current + 1) +
             '&colors=' + (GOL.colors.current + 1) +
             '&zoom=' + (GOL.zoom.current + 1) +
+            '&rule=' + GOL.rule.s.join('') + ',' + GOL.rule.b.join('') +
             '&s=['+ cellState +']';
 
             document.getElementById('exportUrlLink').href = params;
@@ -663,7 +701,7 @@ var GOLloadState, GOLrandom;
          * Button Handler - load state from text format
          */
         load : function() {
-          var text, i, j, hsize = 0, vsize, header, bhmsg, ph, block, n, tlx, tly, state, lifeh = false;
+          var text, i, j, hsize = 0, vsize, header, bhmsg, ph, block, n, tlx, tly, state, rule = null, lifeh = false;
 
           text = document.getElementById('textArea').value.split('\n');
           if (text.length === 0) {
@@ -672,7 +710,13 @@ var GOLloadState, GOLrandom;
           state = [];
 
           if (text[0].trim().match(/^[!.O]./)) { // plaintext according to http://www.conwaylife.com/wiki/Plaintext
-            while (text.length > 0 && text[0].length > 0 && text[0].trim()[0] === '!') {
+            while (text.length > 0 && (text[0].trim().length === 0 || text[0].trim()[0] === '!')) {
+              if (text[0].trim().slice(0, 7) === '!Rule: ') {
+                rule = text[0].trim().slice(7).split('/', 2);
+                if (rule.length !== 2) {
+                  rule = null;
+                }
+              }
               text.shift();
             }
             vsize = text.length;
@@ -699,7 +743,7 @@ var GOLloadState, GOLrandom;
 
           } else { // RLE almost according to http://www.conwaylife.com/wiki/RLE (ignoring instructions about rules and so on)
 
-            while (text.length > 0 && text[0].length > 0 && text[0].trim()[0] === '#') {
+            while (text.length > 0 && (text[0].trim().length === 0 || text[0].trim()[0] === '#')) {
               text.shift();
             }
             if (text.length === 0) {
@@ -736,9 +780,24 @@ var GOLloadState, GOLrandom;
               ph = header[2].split('=');
               if (ph.length !== 2 || ph[0].trim() !== 'rule') {
                 GOL.helpers.error(bhmsg);
+                return;
               }
-              if (ph[1].trim() === 'LifeHistory' || ph[1].trim() === 'HistoricalLife') {
-                lifeh = true;
+              rule = ph[1].trim().split('/', 2);
+              if (rule.length === 1) {
+                if (rule[0] === 'LifeHistory' || rule[0] === 'HistoricalLife') {
+                  lifeh = true;
+                }
+                rule = null;
+              } else {
+                if (rule[0].length > 0 && (rule[0][0] === 'B' || rule[0][0] === 'b') && rule[1].length > 0 && (rule[1][0] === 'S' || rule[1][0] === 's')) {
+                  rule = [rule[1].slice(1), rule[0].slice(1)];
+                } else if (rule[0].length > 0 && (rule[0][0] === 'S' || rule[0][0] === 's') && rule[1].length > 0 && (rule[1][0] === 'B' || rule[1][0] === 'b')) {
+                  rule = [rule[0].slice(1), rule[1].slice(1)];
+                }
+                if (!rule[0].match(/^\d*$/) || !rule[1].match(/^[1-9]*$/)) {
+                  GOL.helpers.error(bhmsg);
+                  return;
+                }
               }
             }
             text.shift();
@@ -785,6 +844,11 @@ var GOLloadState, GOLrandom;
 
           GOL.cleanUp();
           GOL.listLife.actualState = state;
+          if (rule) {
+            GOL.setRule(rule[0], rule[1]);
+          } else {
+            GOL.setRule('23', '3');
+          }
           GOL.canvas.drawWorld();
         },
 
@@ -792,7 +856,7 @@ var GOLloadState, GOLrandom;
          * Button Handler - save state in plaintext format (visible part only)
          */
         savePlaintext : function() {
-          var state, minx, i, j, x, text;
+          var state, minx, i, j, x, text, rule;
 
           state = GOL.listLife.withoutOuterCells();
 
@@ -806,8 +870,15 @@ var GOLloadState, GOLrandom;
               minx = state[j][1];
             }
           }
+          
+          rule = GOL.rule;
 
           text = '';
+
+          if (rule.s.length !== 2 || rule.s[0] !== 2 || rule.s[1] !== 3 || rule.b.length !== 1 || rule.b[0] !== 3) {
+            text += '!Rule: ' + rule.s.join('') + '/' + rule.b.join('') + '\n';
+          }
+
           for (j = 0; j < state.length; j++) {
             if (j > 0) {
               text += new Array(state[j][0] - state[j-1][0] + 1).join('\n');
@@ -902,7 +973,7 @@ var GOLloadState, GOLrandom;
           text += '!';
 
           header = 'x = ' + (maxx - minx + 1) + ', y = ' + (state[state.length - 1][0] - state[0][0] + 1);
-          header += ', rule = B3/S23';
+          header += ', rule = B' + GOL.rule.b.join('') + '/S' + GOL.rule.s.join('');
 
           document.getElementById('textArea').value = header + '\n' + text;
         }
@@ -1151,7 +1222,7 @@ var GOLloadState, GOLrandom;
               }
             }
 
-            if (!(neighbours === 0 || neighbours === 1 || neighbours > 3)) {
+            if (GOL.rule.s.indexOf(neighbours) > -1) {
               this.addCell(x, y, newState);
               alive++;
               this.redrawList.push([x, y, 2]); // Keep alive
@@ -1163,7 +1234,7 @@ var GOLloadState, GOLrandom;
 
         // Process dead neighbours
         for (key in allDeadNeighbours) {
-          if (allDeadNeighbours[key] === 3) { // Add new Cell
+          if (GOL.rule.b.indexOf(allDeadNeighbours[key]) > -1) { // Add new Cell
             key = key.split(',');
             t1 = parseInt(key[0], 10);
             t2 = parseInt(key[1], 10);
