@@ -440,10 +440,10 @@ var GOLloadState, GOLrandom;
       
       // Rule
       for (i = 0; i <= 8; i++) {
-        this.helpers.registerEvent(document.getElementById('rus' + i), 'click', this.handlers.digit(i, this.rule.s));
+        this.helpers.registerEvent(document.getElementById('rus' + i), 'click', this.handlers.digit(i, 's'));
       }
       for (i = 1; i <= 8; i++) {
-        this.helpers.registerEvent(document.getElementById('rub' + i), 'click', this.handlers.digit(i, this.rule.b));
+        this.helpers.registerEvent(document.getElementById('rub' + i), 'click', this.handlers.digit(i, 'b'));
       }
 
       // Layout
@@ -589,9 +589,14 @@ var GOLloadState, GOLrandom;
       /**
        *
        */
-      digit : function(i, el) {
+      digit : function(i, bs) {
         return function() {
-          var n;
+          var n, el;
+          if (bs === 'b') {
+            el = GOL.rule.b;
+          } else if (bs === 's') {
+            el = GOL.rule.s;
+          }
           n = el.indexOf(i);
           if (n > -1) {
             this.className = 'ruleoff';
