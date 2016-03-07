@@ -231,6 +231,7 @@ var GOLloadState, GOLrandom;
     
     /**
       * Set rules of birth and survival from the two strings
+      * The only two places where rule is modified are here and in handlers.digit
       */
     setRule : function(ss, bs) {
       var i, s = [], b = [], el;
@@ -427,6 +428,7 @@ var GOLloadState, GOLrandom;
      * Register event handlers for this session (one time execution)
      */
     registerEvents : function() {
+      var i;
 
       // Keyboard Events
       this.helpers.registerEvent(document.body, 'keyup', this.handlers.keyboard);
@@ -435,6 +437,14 @@ var GOLloadState, GOLrandom;
       this.helpers.registerEvent(document.getElementById('buttonRun'), 'click', this.handlers.buttons.run);
       this.helpers.registerEvent(document.getElementById('buttonStep'), 'click', this.handlers.buttons.step);
       this.helpers.registerEvent(document.getElementById('buttonClear'), 'click', this.handlers.buttons.clear);
+      
+      // Rule
+      for (i = 0; i <= 8; i++) {
+        this.helpers.registerEvent(document.getElementById('rus' + i), 'click', this.handlers.digit(i, this.rule.s));
+      }
+      for (i = 1; i <= 8; i++) {
+        this.helpers.registerEvent(document.getElementById('rub' + i), 'click', this.handlers.digit(i, this.rule.b));
+      }
 
       // Layout
       this.helpers.registerEvent(document.getElementById('buttonTrail'), 'click', this.handlers.buttons.trail);
@@ -571,6 +581,24 @@ var GOLloadState, GOLrandom;
             GOL.canvas.switchCell(position[0], position[1]);
             GOL.handlers.lastX = position[0];
             GOL.handlers.lastY = position[1];
+          }
+        }
+      },
+      
+      
+      /**
+       *
+       */
+      digit : function(i, el) {
+        return function() {
+          var n;
+          n = el.indexOf(i);
+          if (n > -1) {
+            this.className = 'ruleoff';
+            el.splice(n, 1);
+          } else {
+            this.className = 'ruleon';
+            el.push(i);
           }
         }
       },
