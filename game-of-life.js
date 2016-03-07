@@ -214,6 +214,7 @@ var GOLloadState, GOLrandom;
     init : function() {
       this.str = this.language.ru; // Set language of messages and buttons
       try {
+        this.writeRule();
         this.listLife.init();   // Reset/init algorithm
         this.loadConfig();      // Load config from URL (autoplay, colors, zoom, ...)
         this.loadState();       // Load state from URL
@@ -232,17 +233,42 @@ var GOLloadState, GOLrandom;
       * Set rules of birth and survival from the two strings
       */
     setRule : function(ss, bs) {
-      var i, s = [], b = [];
-      for (i = 0; i <= 9; i++) {
+      var i, s = [], b = [], el;
+      for (i = 0; i <= 8; i++) {
+        el = document.getElementById('rus' + i);
+        el.className = 'ruleoff';
         if (ss.indexOf('' + i) > -1) {
           s.push(i);
+          el.className = 'ruleon';
         }
-        if (i > 0 && bs.indexOf('' + i) > -1) {
-          b.push(i);
+        if (i > 0) {
+          el = document.getElementById('rub' + i);
+          el.className = 'ruleoff';
+          if(bs.indexOf('' + i) > -1) {
+            b.push(i);
+            el.className = 'ruleon';
+          }
         }
       }
       this.rule.s = s;
       this.rule.b = b;
+    },
+    
+    
+    /**
+      * Display the digits which represent the rules
+      */
+    writeRule : function() {
+      var i, s;
+      s = 'B';
+      for (i = 1; i <= 8; i++) {
+        s += '<span id="rub' + i + '" class = "ruleoff">' + i + '</span>';
+      }
+      s += '/S';
+      for (i = 0; i <= 8; i++) {
+        s += '<span id="rus' + i + '" class = "ruleoff">' + i + '</span>';
+      }
+      document.getElementById('rule').innerHTML = s;
     },
 
 
@@ -794,7 +820,7 @@ var GOLloadState, GOLrandom;
                 } else if (rule[0].length > 0 && (rule[0][0] === 'S' || rule[0][0] === 's') && rule[1].length > 0 && (rule[1][0] === 'B' || rule[1][0] === 'b')) {
                   rule = [rule[0].slice(1), rule[1].slice(1)];
                 }
-                if (!rule[0].match(/^\d*$/) || !rule[1].match(/^[1-9]*$/)) {
+                if (!rule[0].match(/^[0-8]*$/) || !rule[1].match(/^[1-8]*$/)) {
                   GOL.helpers.error(bhmsg);
                   return;
                 }
